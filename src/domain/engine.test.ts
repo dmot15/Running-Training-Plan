@@ -38,16 +38,14 @@ describe('regeneratePlan (base phase, no race)', () => {
     expect(plan.weeks[3].targetMileage).toBe(20);
     expect(plan.weeks[7].isDownWeek).toBe(true);
     expect(plan.weeks[7].targetMileage).toBe(20);
-    // Weeks between down weeks should generally trend upward.
-    expect(plan.weeks[1].targetMileage).toBeGreaterThan(plan.weeks[0].targetMileage);
-    expect(plan.weeks[2].targetMileage).toBeGreaterThan(plan.weeks[1].targetMileage);
-    // No week should jump more than 10% relative to the smooth growth curve week-over-week
-    // (down weeks are an intentional exception).
+    // Every non-down week grows by exactly 10% over the previous non-down week.
+    expect(plan.weeks[1].targetMileage).toBeCloseTo(22, 1); // 20 * 1.10
+    expect(plan.weeks[2].targetMileage).toBeCloseTo(24.2, 1); // 22 * 1.10
     for (let i = 1; i < plan.weeks.length; i++) {
       if (plan.weeks[i].isDownWeek) continue;
       if (plan.weeks[i - 1].isDownWeek) continue;
       const ratio = plan.weeks[i].targetMileage / plan.weeks[i - 1].targetMileage;
-      expect(ratio).toBeLessThanOrEqual(1.11);
+      expect(ratio).toBeCloseTo(1.1, 2);
     }
   });
 
@@ -93,6 +91,40 @@ describe('regeneratePlan (with a goal race)', () => {
     const tuneUpDay = plan.weeks.flatMap((w) => w.days).find((d) => d.date === '2026-09-19');
     expect(tuneUpDay?.role).toBe('race');
     expect(tuneUpDay?.raceId).toBe('r2');
+  });
+
+  it('keeps build growing at 10%/week (no step-down into build) and holds peak flat at the highest build week until a 2-week taper', () => {
+    const state = defaultAppState('2026-08-01');
+    state.profile.startingWeeklyMileage = 20;
+    state.profile.maxWeeklyMileageCap = 50;
+    const race: Race = { id: 'r1', name: 'Fall Race', date: '2026-11-21', distance: '10k', type: 'road', priority: 'A' };
+    const plan = regeneratePlan(state.profile, [race], state.plan, {}, '2026-08-01');
+
+    const baseWeeks = plan.weeks.filter((w) => w.phase === 'base');
+    const buildWeeks = plan.weeks.filter((w) => w.phase === 'build');
+    const peakWeeks = plan.weeks.filter((w) => w.phase === 'peak');
+    expect(buildWeeks.length).toBeGreaterThan(0);
+    expect(peakWeeks.length).toBeGreaterThan(2);
+
+    // The build phase's first week should be a straight 10% continuation from the base phase's
+    // last week (no 15%-style step-down at the base->build boundary).
+    const lastBase = baseWeeks[baseWeeks.length - 1];
+    const firstBuild = buildWeeks[0];
+    if (!lastBase.isDownWeek && !firstBuild.isDownWeek) {
+      expect(firstBuild.targetMileage).toBeCloseTo(lastBase.targetMileage * 1.1, 1);
+    }
+
+    const highestBuildMileage = Math.max(...buildWeeks.map((w) => w.targetMileage));
+    const nonTaperPeakWeeks = peakWeeks.slice(0, -2);
+    for (const w of nonTaperPeakWeeks) {
+      if (w.isDownWeek) continue; // an adaptation-triggered cut, not the normal case
+      expect(w.targetMileage).toBeCloseTo(highestBuildMileage, 1);
+    }
+
+    // The final 2 weeks (taper into the race) should be lower than the flat peak mileage.
+    const [taperWeek, raceWeek] = peakWeeks.slice(-2);
+    expect(taperWeek.targetMileage).toBeLessThan(highestBuildMileage);
+    expect(raceWeek.targetMileage).toBeLessThan(taperWeek.targetMileage);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   MIN_PHASE_WEEKS,
   PHASE_MILEAGE_STEP_DOWN,
   PHASE_WEEK_SHARE,
+  TAPER_WEEKS_BEFORE_RACE,
 } from './rules';
 import type {
   AdjustmentLogEntry,
@@ -228,8 +229,7 @@ export function regeneratePlan(
   const weeks: Week[] = [];
   let smoothMileage = startMileage;
   let weeksSinceDown = 0;
-  let lastBaseMileage = startMileage;
-  let lastBuildMileage: number | undefined;
+  let highestGrowthMileage = startMileage;
   let peakBaseline: number | undefined;
 
   for (let w = 0; w < totalWeeks; w++) {
@@ -255,9 +255,13 @@ export function regeneratePlan(
     let isDownWeek = false;
     let targetMileage: number;
     const isRaceWeek = phase === 'peak' && w === totalWeeks - 1 && !!upcomingARace;
-    const taperZoneStart = Math.max(0, peakWeeks - 3);
+    // Fixed 2-week taper leading into a goal race (or fewer if the peak phase itself is shorter).
+    const taperWeeksCount = Math.min(TAPER_WEEKS_BEFORE_RACE, peakWeeks);
+    const taperZoneStart = Math.max(0, peakWeeks - taperWeeksCount);
 
-    if (phase === 'base') {
+    if (phase === 'base' || phase === 'build') {
+      // Base and build share one continuous mileage build-up: 10%/week, with a down week
+      // (reset to the plan's starting mileage) every 4th week, capped at the profile's max.
       if (w === 0) {
         targetMileage = smoothMileage;
         weeksSinceDown = 1;
@@ -274,30 +278,18 @@ export function regeneratePlan(
           targetMileage = smoothMileage;
           weeksSinceDown += 1;
           if (mode === 'freeze') recordAdjustment({ id: `${weekStart}-freeze`, date: today, weekNumber, reason, action: 'Held weekly mileage flat instead of increasing.' });
-          if (mode === 'grow-max') recordAdjustment({ id: `${weekStart}-growmax`, date: today, weekNumber, reason, action: 'Increased weekly mileage by the full 10% cap.' });
         }
       }
-      lastBaseMileage = targetMileage;
-    } else if (phase === 'build') {
-      if (lastBuildMileage === undefined) {
-        lastBuildMileage = round1(lastBaseMileage * (1 - PHASE_MILEAGE_STEP_DOWN.baseToBuild));
-      }
-      targetMileage = lastBuildMileage;
-      if (mode === 'down') {
-        isDownWeek = true;
-        targetMileage = round1(targetMileage * 0.85);
-        recordAdjustment({ id: `${weekStart}-builddown`, date: today, weekNumber, reason, action: 'Cut this week’s mileage ~15% for extra recovery.' });
-      }
+      highestGrowthMileage = Math.max(highestGrowthMileage, targetMileage);
     } else {
+      // Peak: hold flat at the highest mileage reached during base/build until the taper.
       if (peakBaseline === undefined) {
-        peakBaseline = round1((lastBuildMileage ?? lastBaseMileage) * (1 - PHASE_MILEAGE_STEP_DOWN.buildToPeak));
+        peakBaseline = highestGrowthMileage;
       }
       if (isRaceWeek) {
         targetMileage = round1(peakBaseline * (1 - PHASE_MILEAGE_STEP_DOWN.peakTaper) * 0.6);
       } else if (weekIndexInPhase >= taperZoneStart) {
-        const stepsFromEnd = peakWeeks - 1 - weekIndexInPhase; // weeks before race week (>=1 since race week handled above)
-        const decay = Math.max(0.55, 1 - PHASE_MILEAGE_STEP_DOWN.peakTaper * (1 / Math.max(1, stepsFromEnd)));
-        targetMileage = round1(peakBaseline * decay);
+        targetMileage = round1(peakBaseline * (1 - PHASE_MILEAGE_STEP_DOWN.peakTaper));
       } else {
         targetMileage = peakBaseline;
       }
@@ -346,9 +338,9 @@ export function regeneratePlan(
       if (hit) daySpecs[i] = { role: 'race', race: hit };
     });
 
-    // Adaptation: downgrade the next hard/long day when mode is 'down' or 'freeze' (base phase only, since
-    // build/peak already apply a mileage cut above); skip days already locked by prior feedback.
-    if (phase === 'base' && (mode === 'down' || mode === 'freeze') && !isRaceWeek) {
+    // Adaptation: downgrade the next hard/long day when mode is 'down' or 'freeze' (base/build phases
+    // only, since peak already applies a mileage cut above); skip days already locked by prior feedback.
+    if ((phase === 'base' || phase === 'build') && (mode === 'down' || mode === 'freeze') && !isRaceWeek) {
       const idx = daySpecs.findIndex((s, i) => !lockedByDate.has(dayDates[i]) && (s.role === 'hard' || s.role === 'long'));
       if (idx >= 0) {
         daySpecs[idx] = { role: 'easy' };

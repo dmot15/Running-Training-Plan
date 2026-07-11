@@ -15,12 +15,13 @@
 
 import type { ExperienceLevel } from './types';
 
-/** "Start at a low level of mileage and work up no more than 10% a week." */
+/** "Start at a low level of mileage and work up no more than 10% a week." Every week that
+ * isn't a down week (or held flat by the adaptation engine) grows by this amount. */
 export const MAX_WEEKLY_MILEAGE_INCREASE_PCT = 0.10;
-/** Conservative default increase used unless recent feedback has been consistently easy. */
-export const DEFAULT_WEEKLY_MILEAGE_INCREASE_PCT = 0.08;
+/** Same as the max — normal weeks always grow at the full 10%; only feedback-driven freezes hold it back. */
+export const DEFAULT_WEEKLY_MILEAGE_INCREASE_PCT = 0.10;
 
-/** "Have a down week every 4th week." */
+/** "Have a down week every 4th week." Applies through base and build (the mileage-building phases). */
 export const DOWN_WEEK_INTERVAL = 4;
 
 /** Base phase mileage ceiling depends on experience/durability/commitment: "40-60 miles". */
@@ -37,13 +38,14 @@ export const STARTING_MILEAGE_BY_EXPERIENCE: Record<ExperienceLevel, number> = {
   advanced: 30,
 };
 
-/** Mileage step-downs between phases ("come down from height of base training"). */
+/**
+ * Base and build share one continuous mileage build-up (10%/week, down week every 4th).
+ * Peak-phase weeks hold flat at the highest mileage reached during that build-up, right up
+ * until the taper: the final 2 weeks before a goal race, which step mileage back down.
+ */
+export const TAPER_WEEKS_BEFORE_RACE = 2;
 export const PHASE_MILEAGE_STEP_DOWN = {
-  /** Build phase (pre-competition analogue): "come down 15% from height of base training." */
-  baseToBuild: 0.15,
-  /** Peak phase (competition analogue): "come down from pre-competition phase mileage ~15%." */
-  buildToPeak: 0.15,
-  /** Final taper block within peak: "cut down mileage another 15%" heading into championship week. */
+  /** The week before race week: "cut down mileage another 15% and decrease a bit each week." */
   peakTaper: 0.15,
 } as const;
 
