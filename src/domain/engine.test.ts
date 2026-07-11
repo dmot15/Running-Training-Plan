@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { roundToHalf } from './format';
 import { computePaces, formatPace } from './paces';
 import { regeneratePlan } from './planGenerator';
 import { defaultAppState } from './storage';
 import type { Race } from './types';
+
+function isHalfOrWhole(n: number): boolean {
+  return Number.isInteger(n * 2);
+}
 
 describe('computePaces', () => {
   it('derives 5K pace from a mile time trial (+33s)', () => {
@@ -38,14 +43,27 @@ describe('regeneratePlan (base phase, no race)', () => {
     expect(plan.weeks[3].targetMileage).toBe(20);
     expect(plan.weeks[7].isDownWeek).toBe(true);
     expect(plan.weeks[7].targetMileage).toBe(20);
-    // Every non-down week grows by exactly 10% over the previous non-down week.
-    expect(plan.weeks[1].targetMileage).toBeCloseTo(22, 1); // 20 * 1.10
-    expect(plan.weeks[2].targetMileage).toBeCloseTo(24.2, 1); // 22 * 1.10
+    // Every non-down week grows by exactly 10% over the previous non-down week, rounded to
+    // the nearest half mile.
+    expect(plan.weeks[1].targetMileage).toBe(22); // roundToHalf(20 * 1.10)
+    expect(plan.weeks[2].targetMileage).toBe(24); // roundToHalf(22 * 1.10) = roundToHalf(24.2)
     for (let i = 1; i < plan.weeks.length; i++) {
       if (plan.weeks[i].isDownWeek) continue;
       if (plan.weeks[i - 1].isDownWeek) continue;
-      const ratio = plan.weeks[i].targetMileage / plan.weeks[i - 1].targetMileage;
-      expect(ratio).toBeCloseTo(1.1, 2);
+      expect(plan.weeks[i].targetMileage).toBe(roundToHalf(plan.weeks[i - 1].targetMileage * 1.1));
+    }
+  });
+
+  it('rounds every weekly and daily mileage figure to the nearest half mile', () => {
+    const state = defaultAppState('2026-08-01');
+    state.profile.startingWeeklyMileage = 21.3; // a non-half starting value, to confirm it gets rounded too
+    state.profile.maxWeeklyMileageCap = 47.2;
+    const plan = regeneratePlan(state.profile, [], state.plan, {}, '2026-08-01');
+    for (const week of plan.weeks) {
+      expect(isHalfOrWhole(week.targetMileage)).toBe(true);
+      for (const day of week.days) {
+        if (day.targetMiles !== undefined) expect(isHalfOrWhole(day.targetMiles)).toBe(true);
+      }
     }
   });
 
@@ -111,14 +129,14 @@ describe('regeneratePlan (with a goal race)', () => {
     const lastBase = baseWeeks[baseWeeks.length - 1];
     const firstBuild = buildWeeks[0];
     if (!lastBase.isDownWeek && !firstBuild.isDownWeek) {
-      expect(firstBuild.targetMileage).toBeCloseTo(lastBase.targetMileage * 1.1, 1);
+      expect(firstBuild.targetMileage).toBe(roundToHalf(lastBase.targetMileage * 1.1));
     }
 
     const highestBuildMileage = Math.max(...buildWeeks.map((w) => w.targetMileage));
     const nonTaperPeakWeeks = peakWeeks.slice(0, -2);
     for (const w of nonTaperPeakWeeks) {
       if (w.isDownWeek) continue; // an adaptation-triggered cut, not the normal case
-      expect(w.targetMileage).toBeCloseTo(highestBuildMileage, 1);
+      expect(w.targetMileage).toBe(highestBuildMileage);
     }
 
     // The final 2 weeks (taper into the race) should be lower than the flat peak mileage.

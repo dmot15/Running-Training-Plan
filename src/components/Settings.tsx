@@ -44,6 +44,7 @@ export default function Settings({ profile, onUpdate, onReset }: Props) {
             Starting weekly mileage
             <input
               type="number"
+              step={0.5}
               value={profile.startingWeeklyMileage}
               onChange={(e) => onUpdate({ startingWeeklyMileage: Number(e.target.value) })}
             />
@@ -52,6 +53,7 @@ export default function Settings({ profile, onUpdate, onReset }: Props) {
             Max weekly mileage cap
             <input
               type="number"
+              step={0.5}
               value={profile.maxWeeklyMileageCap}
               onChange={(e) => onUpdate({ maxWeeklyMileageCap: Number(e.target.value) })}
             />

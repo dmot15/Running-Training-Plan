@@ -66,6 +66,7 @@ export default function Onboarding({ onComplete }: Props) {
               type="number"
               min={5}
               max={100}
+              step={0.5}
               value={startingWeeklyMileage}
               onChange={(e) => setStartingWeeklyMileage(Number(e.target.value))}
             />
@@ -76,6 +77,7 @@ export default function Onboarding({ onComplete }: Props) {
               type="number"
               min={10}
               max={150}
+              step={0.5}
               value={maxWeeklyMileageCap}
               onChange={(e) => setMaxWeeklyMileageCap(Number(e.target.value))}
             />

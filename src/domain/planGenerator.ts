@@ -1,6 +1,7 @@
 import { decideWeekMode, growthPctForMode } from './adaptation';
 import { contentForRole, type Variant } from './content';
 import { addDays, diffDays, weekdayIndexMon0, weeksBetween } from './dates';
+import { roundToHalf } from './format';
 import { computePaces } from './paces';
 import {
   DOWN_WEEK_INTERVAL,
@@ -67,20 +68,17 @@ const TAPER_ROLE_BY_DAYS_BEFORE: Record<number, { role: DayRole; variant?: Varia
   6: { role: 'easy' },
 };
 
+// Rounded to the nearest half mile for display consistency with the rest of the plan.
 const RACE_DISTANCE_MILES: Record<RaceDistance, number> = {
   '800m': 0.5,
   '1600m/mile': 1,
   '3200m/2mile': 2,
-  '5k': 3.1,
-  '10k': 6.2,
-  'half-marathon': 13.1,
-  marathon: 26.2,
-  other: 3.1,
+  '5k': 3,
+  '10k': 6,
+  'half-marathon': 13,
+  marathon: 26,
+  other: 3,
 };
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
-}
 
 function allocatePhases(totalWeeks: number): { base: number; build: number; peak: number } {
   if (totalWeeks <= 0) return { base: 0, build: 0, peak: 0 };
@@ -113,7 +111,7 @@ function feedbackWindow(feedback: Record<string, FeedbackEntry>, beforeDate: str
 }
 
 function raceMilesFor(race: Race): number {
-  return RACE_DISTANCE_MILES[race.distance] ?? 3.1;
+  return RACE_DISTANCE_MILES[race.distance] ?? 3;
 }
 
 function distributeMileage(
@@ -127,7 +125,7 @@ function distributeMileage(
       result[i] = d.lockedMiles ?? 0;
       pool -= result[i];
     } else if (d.role === 'race') {
-      result[i] = d.raceMiles ?? 3.1;
+      result[i] = d.raceMiles ?? 3;
       pool -= result[i];
     }
   });
@@ -136,7 +134,7 @@ function distributeMileage(
   const weightSum = flexible.reduce((s, { d }) => s + ROLE_WEIGHT[d.role], 0);
   if (weightSum > 0) {
     flexible.forEach(({ d, i }) => {
-      result[i] = round1(pool * (ROLE_WEIGHT[d.role] / weightSum));
+      result[i] = roundToHalf(pool * (ROLE_WEIGHT[d.role] / weightSum));
     });
   }
   return result;
@@ -217,8 +215,8 @@ export function regeneratePlan(
     ? allocatePhases(totalWeeks)
     : { base: totalWeeks, build: 0, peak: 0 };
 
-  const cap = profile.maxWeeklyMileageCap || MAX_MILEAGE_BY_EXPERIENCE[profile.experienceLevel];
-  const startMileage = profile.startingWeeklyMileage;
+  const cap = roundToHalf(profile.maxWeeklyMileageCap || MAX_MILEAGE_BY_EXPERIENCE[profile.experienceLevel]);
+  const startMileage = roundToHalf(profile.startingWeeklyMileage);
 
   // Keyed by id so repeated regenerations (e.g. one per keystroke) overwrite rather than
   // duplicate an already-recorded adjustment for the same week/reason.
@@ -274,7 +272,7 @@ export function regeneratePlan(
           if (mode === 'down') recordAdjustment({ id: `${weekStart}-down`, date: today, weekNumber, reason, action: 'Inserted an unscheduled down week and reset mileage toward the plan’s starting level.' });
         } else {
           const pct = growthPctForMode(mode);
-          smoothMileage = Math.min(cap, round1(smoothMileage * (1 + pct)));
+          smoothMileage = Math.min(cap, roundToHalf(smoothMileage * (1 + pct)));
           targetMileage = smoothMileage;
           weeksSinceDown += 1;
           if (mode === 'freeze') recordAdjustment({ id: `${weekStart}-freeze`, date: today, weekNumber, reason, action: 'Held weekly mileage flat instead of increasing.' });
@@ -287,15 +285,15 @@ export function regeneratePlan(
         peakBaseline = highestGrowthMileage;
       }
       if (isRaceWeek) {
-        targetMileage = round1(peakBaseline * (1 - PHASE_MILEAGE_STEP_DOWN.peakTaper) * 0.6);
+        targetMileage = roundToHalf(peakBaseline * (1 - PHASE_MILEAGE_STEP_DOWN.peakTaper) * 0.6);
       } else if (weekIndexInPhase >= taperZoneStart) {
-        targetMileage = round1(peakBaseline * (1 - PHASE_MILEAGE_STEP_DOWN.peakTaper));
+        targetMileage = roundToHalf(peakBaseline * (1 - PHASE_MILEAGE_STEP_DOWN.peakTaper));
       } else {
         targetMileage = peakBaseline;
       }
       if (mode === 'down' && !isRaceWeek) {
         isDownWeek = true;
-        targetMileage = round1(targetMileage * 0.85);
+        targetMileage = roundToHalf(targetMileage * 0.85);
         recordAdjustment({ id: `${weekStart}-peakdown`, date: today, weekNumber, reason, action: 'Cut this week’s mileage ~15% for extra recovery.' });
       } else if (mode === 'down' && isRaceWeek) {
         recordAdjustment({ id: `${weekStart}-racedown`, date: today, weekNumber, reason, action: 'Flagged fatigue/pain heading into race week — review whether this race is still a go.' });
@@ -356,7 +354,7 @@ export function regeneratePlan(
     // Ensure long run reflects the documented ~20% share when not overridden by locking/race.
     const longIdx = daySpecs.findIndex((s) => s.role === 'long');
     if (longIdx >= 0 && !dayInputs[longIdx].locked) {
-      miles[longIdx] = round1(Math.max(miles[longIdx], targetMileage * LONG_RUN_PCT_OF_WEEKLY * 0.8));
+      miles[longIdx] = roundToHalf(Math.max(miles[longIdx], targetMileage * LONG_RUN_PCT_OF_WEEKLY * 0.8));
     }
 
     const days: Workout[] = dayDates.map((date, i) =>

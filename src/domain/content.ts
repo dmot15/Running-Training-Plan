@@ -55,16 +55,16 @@ export function hardWorkoutContent(variant: Variant, weekIndex: number, paces?: 
 export function easyContent(miles: number, withDrills: boolean): { title: string; description: string } {
   return {
     title: 'Easy Recovery',
-    description: `${CORE_NOTE}${withDrills ? ' + running drills' : ''}. ${miles.toFixed(1)} mi easy + a few strides. ${STRETCH_NOTE}`,
+    description: `${CORE_NOTE}${withDrills ? ' + running drills' : ''}. ${miles} mi easy + a few strides. ${STRETCH_NOTE}`,
   };
 }
 
 export function mediumContent(miles: number): { title: string; description: string } {
-  return { title: 'Medium — As You Feel', description: `${miles.toFixed(1)} mi at a "as you feel" medium effort. ${STRETCH_NOTE}` };
+  return { title: 'Medium — As You Feel', description: `${miles} mi at a "as you feel" medium effort. ${STRETCH_NOTE}` };
 }
 
 export function longContent(miles: number): { title: string; description: string } {
-  return { title: 'Long Run', description: `${miles.toFixed(1)} mi long run (about 20% of weekly mileage). Keep it conversational. ${STRETCH_NOTE}` };
+  return { title: 'Long Run', description: `${miles} mi long run (about 20% of weekly mileage). Keep it conversational. ${STRETCH_NOTE}` };
 }
 
 export function restContent(): { title: string; description: string } {
@@ -80,7 +80,7 @@ export function raceContent(race: Race, miles: number): { title: string; descrip
   const goal = race.goalTimeSeconds ? ` Goal: ${formatPace(race.goalTimeSeconds)} total.` : '';
   return {
     title: `${label}: ${race.name}`,
-    description: `${race.distance} (${race.type}) — race day! ~${miles.toFixed(1)} mi total with warmup/cooldown.${goal}`,
+    description: `${race.distance} (${race.type}) — race day! ~${miles} mi total with warmup/cooldown.${goal}`,
   };
 }
 
