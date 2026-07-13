@@ -86,6 +86,9 @@ export const MILE_TO_5K_OFFSET_SEC = 33;
 export const FIVE_K_TO_MILE_OFFSET_SEC = 33;
 /** "5K PACE + 30-40 sec = TEMPO RUN PACE" - use the midpoint. */
 export const TEMPO_OFFSET_SEC_RANGE: [number, number] = [30, 40];
+/** Standard exponent in Riegel's race-time prediction formula (T2 = T1 * (D2/D1)^1.06),
+ * used to extend a single time trial into 10K/half-marathon pace estimates. */
+export const RIEGEL_EXPONENT = 1.06;
 
 /** Base phase: hill-hard Tuesday / tempo Friday, rotated with fartlek variety notes from the deck. */
 export const BASE_HARD_WORKOUT_MENU = [
@@ -135,6 +138,52 @@ export const XC_STYLE_HARD_WORKOUT_MENU = [
   '3-5 x 1000m, 3 min rest, on grass (preferably hilly)',
   '3-4 x 1 mile repeats, 3 min rest, on grass (preferably hilly)',
   '4-6 x 800m, 3 min rest, on grass',
+];
+
+/**
+ * Road-race workout menus transcribed from the B.A.A. Half Marathon Training Plan: Level
+ * Three (Boston Athletic Association, 2018). Used in place of the track-style menus above
+ * for build/peak phases when the goal race is a road race (5K/10K/half marathon/marathon)
+ * rather than a track or cross-country race — "goal pace" means goal race pace.
+ */
+export const PROGRESSION_RUN_MENU = [
+  '4 miles steady, then 3-4 min rest, then 6 x 30 sec hard with 60 sec rest',
+  '5 miles steady, then 3-4 min rest, then 4 x 60 sec hard with 90 sec rest',
+  '6 miles steady, then 3-4 min rest, then 6-7 x 45 sec hard with 60 sec rest',
+  '7 miles steady, then 3-4 min rest, then 8 x 30 sec hard with 60 sec rest',
+];
+
+export const GOAL_PACE_TEMPO_MENU = [
+  '5-6 x 3/4 mile at goal pace, 400m recovery jog between',
+  '4-5 x 1 mile at goal pace, 2 min rest between',
+];
+
+/** Race-pace ladder intervals blending goal, 10K, and 5K pace — gets more complex as the race approaches. */
+export const RACE_PACE_LADDER_MENU = [
+  '8 x 1/2 mile at 10K pace, 90 sec jog rest',
+  '6 x 3/4 mile at 10K pace, 1/4-mile jog rest',
+  '3 x 1 mile at 10K pace (1/4-mile jog) + 2 x 1/2 mile at 5K pace (1/4-mile jog)',
+  '2 miles at goal pace (3 min rest), 2 x 1 mile at 10K pace (3 min rest), 2 x 1/2 mile at 5K pace (2 min rest)',
+  '2 x 2 miles at 10K pace (3 min jog), 2 x 1/2 mile at 5K pace (90 sec jog)',
+  '2 miles at goal pace (2 min rest), 2 x 1 mile at 10K pace (2 min rest), 2 x 1/2 mile at 5K pace (2 min rest)',
+  '1 mile at goal pace (2 min rest), 3 x 1 mile at 10K pace (3 min rest), 2 x 1/2 mile at 5K pace (2 min rest)',
+  '3 x 1 mile at 10K pace (3 min rest) + 2 x 3/4 mile at 5K pace (1/4-mile jog)',
+];
+
+/** Race week: short and sharp, mirroring the plan's final-week Tuesday session and Thursday strides. */
+export const RACE_WEEK_ROAD_MENU = [
+  '3 x 1/2 mile at 10K pace (2 min rest) + 3 x 1/2 mile at 5K pace (1/4-mile jog)',
+  '3-4 easy miles, then 4 x 30 sec hard with 60 sec rest',
+];
+
+/**
+ * "Half Marathon Simulation": a large goal-pace block embedded in an otherwise easy long
+ * run, used as a periodic dress rehearsal in the peak phase. Distances scale down for
+ * shorter goal races (10K/5K).
+ */
+export const HM_SIMULATION_SEGMENTS = [
+  { easyBefore: 6, atGoalPace: 5, easyAfter: 2 },
+  { easyBefore: 6, atGoalPace: 6, easyAfter: 2 },
 ];
 
 export const CORE_NOTE = 'Core + strides';

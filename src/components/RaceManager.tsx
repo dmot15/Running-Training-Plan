@@ -45,7 +45,13 @@ export default function RaceManager({ races, onAdd, onUpdate, onDelete }: Props)
         <h3>Add a race</h3>
         <p className="muted">
           Adding an <strong>A</strong> race rebuilds the plan from today toward it: base → speed-endurance build → peak,
-          with a taper in the final week. <strong>B</strong> races just get inserted as that week&apos;s hard day.
+          with a taper in the final 2 weeks. <strong>B</strong> races just get inserted as that week&apos;s hard day.
+        </p>
+        <p className="muted">
+          For a <strong>Road</strong> race (5K/10K/half/marathon), build and peak workouts switch to the B.A.A. Half
+          Marathon plan style — progression runs, goal-pace tempo intervals, race-pace ladders, and periodic
+          &quot;simulation&quot; long runs. Set a goal time below to drive your goal pace for those workouts (otherwise
+          it&apos;s predicted from your time trials in Settings).
         </p>
         <form onSubmit={handleSubmit}>
           <label>

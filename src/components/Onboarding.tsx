@@ -13,7 +13,7 @@ export default function Onboarding({ onComplete }: Props) {
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>('intermediate');
   const [startingWeeklyMileage, setStartingWeeklyMileage] = useState(STARTING_MILEAGE_BY_EXPERIENCE.intermediate);
   const [maxWeeklyMileageCap, setMaxWeeklyMileageCap] = useState(MAX_MILEAGE_BY_EXPERIENCE.intermediate);
-  const [trialType, setTrialType] = useState<'mile' | '5k'>('mile');
+  const [trialType, setTrialType] = useState<TimeTrial['type']>('mile');
   const [trialTime, setTrialTime] = useState('');
 
   function handleExperienceChange(level: ExperienceLevel) {
@@ -89,13 +89,15 @@ export default function Onboarding({ onComplete }: Props) {
           <div className="row">
             <label>
               Type
-              <select value={trialType} onChange={(e) => setTrialType(e.target.value as 'mile' | '5k')}>
+              <select value={trialType} onChange={(e) => setTrialType(e.target.value as TimeTrial['type'])}>
                 <option value="mile">1 mile</option>
                 <option value="5k">5K</option>
+                <option value="10k">10K</option>
+                <option value="half-marathon">Half Marathon</option>
               </select>
             </label>
             <label>
-              Time (mm:ss)
+              Time (mm:ss or h:mm:ss)
               <input type="text" placeholder="6:45" value={trialTime} onChange={(e) => setTrialTime(e.target.value)} />
             </label>
           </div>

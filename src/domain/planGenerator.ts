@@ -1,5 +1,5 @@
 import { decideWeekMode, growthPctForMode } from './adaptation';
-import { contentForRole, type Variant } from './content';
+import { contentForRole, simulationSegmentFor, type RoadPaces, type Variant } from './content';
 import { addDays, diffDays, weekdayIndexMon0, weeksBetween } from './dates';
 import { roundToHalf } from './format';
 import { computePaces } from './paces';
@@ -16,6 +16,7 @@ import type {
   AdjustmentLogEntry,
   DayRole,
   FeedbackEntry,
+  Paces,
   Phase,
   PlanState,
   Race,
@@ -53,6 +54,29 @@ const DAY_TEMPLATES: Record<'base' | 'build' | 'peak', { role: DayRole; variant?
     { role: 'easy', drills: true },
     { role: 'easy' },
     { role: 'hard', variant: 'track-peak' },
+    { role: 'rest' },
+  ],
+};
+
+/** Road-race equivalents (B.A.A. Half Marathon Training Plan style), used for build/peak
+ * phases instead of DAY_TEMPLATES when the goal race is a road race. */
+const ROAD_DAY_TEMPLATES: Record<'build' | 'peak', { role: DayRole; variant?: Variant; drills?: boolean }[]> = {
+  build: [
+    { role: 'easy', drills: true },
+    { role: 'hard', variant: 'goal-pace-tempo' },
+    { role: 'medium' },
+    { role: 'easy', drills: true },
+    { role: 'hard', variant: 'progression-run' },
+    { role: 'long' },
+    { role: 'rest' },
+  ],
+  peak: [
+    { role: 'long' },
+    { role: 'hard', variant: 'race-pace-ladder' },
+    { role: 'medium' },
+    { role: 'easy', drills: true },
+    { role: 'easy' },
+    { role: 'hard', variant: 'progression-run' },
     { role: 'rest' },
   ],
 };
@@ -114,8 +138,25 @@ function raceMilesFor(race: Race): number {
   return RACE_DISTANCE_MILES[race.distance] ?? 3;
 }
 
+/** Goal race pace (seconds/mile): the race's own goal time if set, else predicted from time trials. */
+function goalPaceForRace(race: Race | undefined, paces: Paces | undefined): number | undefined {
+  if (!race) return undefined;
+  if (race.goalTimeSeconds) return race.goalTimeSeconds / raceMilesFor(race);
+  if (!paces) return undefined;
+  switch (race.distance) {
+    case '5k':
+      return paces.fiveKPace;
+    case '10k':
+      return paces.tenKPace;
+    case 'half-marathon':
+      return paces.halfMarathonPace;
+    default:
+      return paces.halfMarathonPace;
+  }
+}
+
 function distributeMileage(
-  days: { role: DayRole; locked: boolean; lockedMiles?: number; raceMiles?: number }[],
+  days: { role: DayRole; locked: boolean; lockedMiles?: number; raceMiles?: number; fixedMiles?: number }[],
   weekTotal: number,
 ): number[] {
   const result = new Array(days.length).fill(0);
@@ -127,10 +168,13 @@ function distributeMileage(
     } else if (d.role === 'race') {
       result[i] = d.raceMiles ?? 3;
       pool -= result[i];
+    } else if (d.fixedMiles !== undefined) {
+      result[i] = d.fixedMiles;
+      pool -= result[i];
     }
   });
   pool = Math.max(0, pool);
-  const flexible = days.map((d, i) => ({ d, i })).filter(({ d }) => !d.locked && d.role !== 'race');
+  const flexible = days.map((d, i) => ({ d, i })).filter(({ d }) => !d.locked && d.role !== 'race' && d.fixedMiles === undefined);
   const weightSum = flexible.reduce((s, { d }) => s + ROLE_WEIGHT[d.role], 0);
   if (weightSum > 0) {
     flexible.forEach(({ d, i }) => {
@@ -146,6 +190,8 @@ interface GenContext {
   feedback: Record<string, FeedbackEntry>;
   lockedByDate: Map<string, Workout>;
   today: string;
+  paces?: Paces;
+  roadPaces?: RoadPaces;
 }
 
 function buildDay(
@@ -164,11 +210,11 @@ function buildDay(
   const locked = ctx.lockedByDate.get(date);
   if (locked) return locked;
 
-  const paces = computePaces(ctx.profile.timeTrials);
   const { title, description } = contentForRole(role, miles, {
     variant,
     weekIndex: weekIndexInPhase,
-    paces,
+    paces: ctx.paces,
+    roadPaces: ctx.roadPaces,
     withDrills: drills,
     race: raceOnThisDay,
   });
@@ -218,11 +264,19 @@ export function regeneratePlan(
   const cap = roundToHalf(profile.maxWeeklyMileageCap || MAX_MILEAGE_BY_EXPERIENCE[profile.experienceLevel]);
   const startMileage = roundToHalf(profile.startingWeeklyMileage);
 
+  // Road races (5K/10K/half/marathon) draw build/peak workouts from the B.A.A. Half Marathon
+  // plan's menus (progression runs, goal-pace tempo, race-pace ladders, simulation long runs)
+  // instead of the track-style ladder/speed-endurance menus.
+  const style: 'road' | 'track' = upcomingARace?.type === 'road' ? 'road' : 'track';
+  const paces = computePaces(profile.timeTrials);
+  const roadPaces: RoadPaces | undefined =
+    style === 'road' ? { goalPace: goalPaceForRace(upcomingARace, paces), tenKPace: paces?.tenKPace, fiveKPace: paces?.fiveKPace } : undefined;
+
   // Keyed by id so repeated regenerations (e.g. one per keystroke) overwrite rather than
   // duplicate an already-recorded adjustment for the same week/reason.
   const adjustmentsById = new Map<string, AdjustmentLogEntry>(existingPlan.adjustmentLog.map((a) => [a.id, a]));
   const recordAdjustment = (entry: AdjustmentLogEntry) => adjustmentsById.set(entry.id, entry);
-  const ctx: GenContext = { profile, races, feedback, lockedByDate, today };
+  const ctx: GenContext = { profile, races, feedback, lockedByDate, today, paces, roadPaces };
 
   const weeks: Week[] = [];
   let smoothMileage = startMileage;
@@ -300,33 +354,54 @@ export function regeneratePlan(
       }
     }
 
-    // Determine day roles for the week.
-    const template = DAY_TEMPLATES[phase];
+    // Determine day roles for the week. Base always uses the general aerobic-building
+    // template; build/peak switch to the road-race menus when training for a road race.
+    const template = phase === 'base' ? DAY_TEMPLATES.base : style === 'road' ? ROAD_DAY_TEMPLATES[phase] : DAY_TEMPLATES[phase];
 
-    type DaySpec = { role: DayRole; variant?: Variant; drills?: boolean; race?: Race };
-    let daySpecs: DaySpec[];
+    type DaySpec = { role: DayRole; variant?: Variant; drills?: boolean; race?: Race; fixedMiles?: number };
 
-    if (isRaceWeek && upcomingARace) {
-      daySpecs = dayDates.map((date) => {
-        const offset = diffDays(date, upcomingARace.date);
-        const spec = TAPER_ROLE_BY_DAYS_BEFORE[offset];
-        if (spec) return { ...spec, race: offset === 0 ? upcomingARace : undefined };
-        // Days after the race within the same displayed week: recovery.
-        return offset < 0 ? { role: 'rest' as DayRole } : { role: 'easy' as DayRole };
+    // Taper day-roles are keyed by days-before-race, evaluated per calendar date rather than
+    // per week-block: week blocks run on a fixed 7-day cadence from the plan start date, which
+    // has no reason to line up with the race date, so the taper window can straddle two blocks.
+    function taperSpecFor(date: string): DaySpec | undefined {
+      if (!upcomingARace) return undefined;
+      const offset = diffDays(date, upcomingARace.date);
+      if (offset < 0) return { role: 'rest' }; // after the race, within the same trailing block
+      const spec = TAPER_ROLE_BY_DAYS_BEFORE[offset];
+      if (!spec) return undefined;
+      const variant = spec.variant === 'track-race-taper' && style === 'road' ? 'race-week-road' : spec.variant;
+      return { ...spec, variant, race: offset === 0 ? upcomingARace : undefined };
+    }
+
+    // Map by actual weekday (Mon..Sun) rather than position-in-plan, so e.g. the hard track day
+    // always lands on the deck's intended Tuesday regardless of which weekday the plan start
+    // date falls on. The taper window (0-6 days before the race) overrides this per date.
+    let daySpecs: DaySpec[] = dayDates.map((date) => {
+      const taper = taperSpecFor(date);
+      if (taper) return taper;
+      const t = template[weekdayIndexMon0(date)];
+      return { role: t.role, variant: t.variant, drills: t.drills };
+    });
+
+    // In the couple of weeks approaching the race (but not the taper window itself), switch to
+    // the shorter/faster taper menu ahead of the full race-week sharpener.
+    if (phase === 'peak' && weekIndexInPhase >= taperZoneStart) {
+      daySpecs = daySpecs.map((s) => {
+        if (s.variant === 'track-peak') return { ...s, variant: 'track-peak-taper' };
+        if (s.variant === 'race-pace-ladder') return { ...s, variant: 'race-week-road' };
+        return s;
       });
-    } else {
-      // Map by actual weekday (Mon..Sun) rather than position-in-plan, so e.g. the hard track
-      // day always lands on the deck's intended Tuesday regardless of which weekday the plan
-      // start date falls on.
-      daySpecs = dayDates.map((date) => {
-        const t = template[weekdayIndexMon0(date)];
-        return { role: t.role, variant: t.variant, drills: t.drills };
+    }
+    // Roughly every other peak-phase week (before the taper), a road race gets a "simulation"
+    // long run — a large goal-pace block embedded in an otherwise easy long run. Indexed the
+    // same way content.ts's simulationLongContent picks its segment, so the mileage shown on
+    // the day card always matches the segment described in the workout text.
+    if (style === 'road' && phase === 'peak' && weekIndexInPhase < taperZoneStart && weekIndexInPhase % 2 === 1) {
+      daySpecs = daySpecs.map((s) => {
+        if (s.role !== 'long') return s;
+        const segment = simulationSegmentFor(weekIndexInPhase);
+        return { ...s, variant: 'hm-simulation', fixedMiles: segment.easyBefore + segment.atGoalPace + segment.easyAfter };
       });
-      // In the couple of weeks approaching the race (but not race week itself), switch to the
-      // shorter/faster "May" taper menu ahead of the full race-week sharpener.
-      if (phase === 'peak' && !isRaceWeek && weekIndexInPhase >= taperZoneStart) {
-        daySpecs = daySpecs.map((s) => (s.variant === 'track-peak' ? { ...s, variant: 'track-peak-taper' } : s));
-      }
     }
 
     // Overlay any other races (B-priority tune-ups, or A-races beyond this horizon) that land in this week.
@@ -347,13 +422,19 @@ export function regeneratePlan(
 
     const dayInputs = daySpecs.map((s, i) => {
       const locked = lockedByDate.get(dayDates[i]);
-      return { role: s.role, locked: !!locked, lockedMiles: locked?.targetMiles, raceMiles: s.race ? raceMilesFor(s.race) : undefined };
+      return {
+        role: s.role,
+        locked: !!locked,
+        lockedMiles: locked?.targetMiles,
+        raceMiles: s.race ? raceMilesFor(s.race) : undefined,
+        fixedMiles: s.fixedMiles,
+      };
     });
     const miles = distributeMileage(dayInputs, targetMileage);
 
-    // Ensure long run reflects the documented ~20% share when not overridden by locking/race.
+    // Ensure long run reflects the documented ~20% share when not overridden by locking/race/simulation.
     const longIdx = daySpecs.findIndex((s) => s.role === 'long');
-    if (longIdx >= 0 && !dayInputs[longIdx].locked) {
+    if (longIdx >= 0 && !dayInputs[longIdx].locked && dayInputs[longIdx].fixedMiles === undefined) {
       miles[longIdx] = roundToHalf(Math.max(miles[longIdx], targetMileage * LONG_RUN_PCT_OF_WEEKLY * 0.8));
     }
 

@@ -19,7 +19,7 @@ export type RaceDistance =
 export type RaceType = 'track' | 'road' | 'xc';
 
 export interface TimeTrial {
-  type: 'mile' | '5k';
+  type: 'mile' | '5k' | '10k' | 'half-marathon';
   timeSeconds: number;
   date: string; // ISO date
 }
@@ -31,6 +31,10 @@ export interface Paces {
   fiveKPace: number;
   /** seconds per mile, midpoint of the 30-40s/mile-over-5K-pace range */
   tempoPace: number;
+  /** seconds per mile, Riegel-predicted from the 5K-equivalent effort */
+  tenKPace: number;
+  /** seconds per mile, Riegel-predicted from the 5K-equivalent effort */
+  halfMarathonPace: number;
   /** seconds per 400m, derived from mile pace / 4 */
   per400: number;
   sourceTrial?: TimeTrial;

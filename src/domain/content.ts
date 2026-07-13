@@ -5,8 +5,13 @@ import {
   BUILD_TEMPO_WORKOUT,
   BUILD_TRACK_WORKOUT_MENU,
   CORE_NOTE,
+  GOAL_PACE_TEMPO_MENU,
+  HM_SIMULATION_SEGMENTS,
   PEAK_TAPER_TRACK_WORKOUT_MENU,
   PEAK_TRACK_WORKOUT_MENU,
+  PROGRESSION_RUN_MENU,
+  RACE_PACE_LADDER_MENU,
+  RACE_WEEK_ROAD_MENU,
   RACE_WEEK_TRACK_WORKOUT_MENU,
   STRETCH_NOTE,
 } from './rules';
@@ -19,7 +24,19 @@ export type Variant =
   | 'tempo-build'
   | 'track-peak'
   | 'track-peak-taper'
-  | 'track-race-taper';
+  | 'track-race-taper'
+  | 'progression-run'
+  | 'goal-pace-tempo'
+  | 'race-pace-ladder'
+  | 'race-week-road'
+  | 'hm-simulation';
+
+/** Goal/10K/5K pace for the road-race workout menus (seconds per mile). */
+export interface RoadPaces {
+  goalPace?: number;
+  tenKPace?: number;
+  fiveKPace?: number;
+}
 
 function pick<T>(menu: T[], index: number): T {
   return menu[((index % menu.length) + menu.length) % menu.length];
@@ -30,7 +47,21 @@ function paceCheatSheet(paces?: Paces): string {
   return `\n\nYour paces — Mile: ${formatPace(paces.milePace)} · 5K: ${formatPace(paces.fiveKPace)} · Tempo: ${formatPace(paces.tempoPace)}`;
 }
 
-export function hardWorkoutContent(variant: Variant, weekIndex: number, paces?: Paces): { title: string; description: string } {
+function roadPaceCheatSheet(roadPaces?: RoadPaces): string {
+  if (!roadPaces) return '';
+  const parts: string[] = [];
+  if (roadPaces.goalPace) parts.push(`Goal pace: ${formatPace(roadPaces.goalPace)}`);
+  if (roadPaces.tenKPace) parts.push(`10K pace: ${formatPace(roadPaces.tenKPace)}`);
+  if (roadPaces.fiveKPace) parts.push(`5K pace: ${formatPace(roadPaces.fiveKPace)}`);
+  return parts.length ? `\n\nYour paces — ${parts.join(' · ')}` : '';
+}
+
+export function hardWorkoutContent(
+  variant: Variant,
+  weekIndex: number,
+  paces?: Paces,
+  roadPaces?: RoadPaces,
+): { title: string; description: string } {
   switch (variant) {
     case 'hill-fartlek':
       return { title: 'Hard: Hills / Fartlek', description: pick(BASE_HARD_WORKOUT_MENU, weekIndex) + paceCheatSheet(paces) };
@@ -49,7 +80,37 @@ export function hardWorkoutContent(variant: Variant, weekIndex: number, paces?: 
         title: 'Hard: Race-Week Sharpener (≤2 mi of hard reps)',
         description: pick(RACE_WEEK_TRACK_WORKOUT_MENU, weekIndex) + paceCheatSheet(paces),
       };
+    case 'progression-run':
+      return { title: 'Hard: Progression Run', description: pick(PROGRESSION_RUN_MENU, weekIndex) + roadPaceCheatSheet(roadPaces) };
+    case 'goal-pace-tempo':
+      return { title: 'Hard: Goal-Pace Tempo Intervals', description: pick(GOAL_PACE_TEMPO_MENU, weekIndex) + roadPaceCheatSheet(roadPaces) };
+    case 'race-pace-ladder':
+      return { title: 'Hard: Race-Pace Ladder', description: pick(RACE_PACE_LADDER_MENU, weekIndex) + roadPaceCheatSheet(roadPaces) };
+    case 'race-week-road':
+      return {
+        title: 'Hard: Race-Week Sharpener',
+        description: pick(RACE_WEEK_ROAD_MENU, weekIndex) + roadPaceCheatSheet(roadPaces),
+      };
+    case 'hm-simulation':
+      // Only ever used on the 'long' role (see contentForRole); hardWorkoutContent shouldn't
+      // be called with it, but a menu entry keeps this switch exhaustive and safe.
+      return { title: 'Hard: Race Simulation', description: 'See long run for today.' };
   }
+}
+
+/** The single source of truth for which simulation segment a given peak-phase week uses,
+ * so the mileage set on the day (see planGenerator.ts) always matches this description. */
+export function simulationSegmentFor(weekIndex: number) {
+  return pick(HM_SIMULATION_SEGMENTS, weekIndex);
+}
+
+export function simulationLongContent(miles: number, weekIndex: number, roadPaces?: RoadPaces): { title: string; description: string } {
+  const segment = simulationSegmentFor(weekIndex);
+  const paceNote = roadPaces?.goalPace ? ` (${formatPace(roadPaces.goalPace)}/mi)` : '';
+  return {
+    title: 'Long Run: Race Simulation',
+    description: `${segment.easyBefore} mi easy, ${segment.atGoalPace} mi at goal pace${paceNote}, ${segment.easyAfter} mi easy (~${miles} mi total). A dress rehearsal for race-day pacing and fueling. ${STRETCH_NOTE}`,
+  };
 }
 
 export function easyContent(miles: number, withDrills: boolean): { title: string; description: string } {
@@ -100,17 +161,19 @@ export const ROLE_EXPLANATION: Record<DayRole, string> = {
 export function contentForRole(
   role: DayRole,
   miles: number,
-  opts: { variant?: Variant; weekIndex: number; paces?: Paces; withDrills?: boolean; race?: Race },
+  opts: { variant?: Variant; weekIndex: number; paces?: Paces; roadPaces?: RoadPaces; withDrills?: boolean; race?: Race },
 ): { title: string; description: string } {
   switch (role) {
     case 'hard':
-      return hardWorkoutContent(opts.variant ?? 'hill-fartlek', opts.weekIndex, opts.paces);
+      return hardWorkoutContent(opts.variant ?? 'hill-fartlek', opts.weekIndex, opts.paces, opts.roadPaces);
     case 'easy':
       return easyContent(miles, !!opts.withDrills);
     case 'medium':
       return mediumContent(miles);
     case 'long':
-      return longContent(miles);
+      return opts.variant === 'hm-simulation'
+        ? simulationLongContent(miles, opts.weekIndex, opts.roadPaces)
+        : longContent(miles);
     case 'rest':
       return restContent();
     case 'race':

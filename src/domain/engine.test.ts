@@ -26,6 +26,26 @@ describe('computePaces', () => {
   it('formats seconds/mile as m:ss/mi', () => {
     expect(formatPace(330)).toBe('5:30/mi');
   });
+
+  it('round-trips a 10K time trial back to the same 10K pace via Riegel', () => {
+    // 50:00 10K -> pace/mi = 3000 / 6.21371
+    const paces = computePaces([{ type: '10k', timeSeconds: 3000, date: '2026-07-01' }]);
+    expect(paces?.tenKPace).toBeCloseTo(3000 / 6.21371, 3);
+  });
+
+  it('round-trips a half-marathon time trial back to the same half-marathon pace via Riegel', () => {
+    // 1:45:00 half marathon -> pace/mi = 6300 / 13.10938
+    const paces = computePaces([{ type: 'half-marathon', timeSeconds: 6300, date: '2026-07-01' }]);
+    expect(paces?.halfMarathonPace).toBeCloseTo(6300 / 13.10938, 3);
+  });
+
+  it('predicts progressively slower per-mile pace at longer race distances', () => {
+    const paces = computePaces([{ type: '5k', timeSeconds: 1200, date: '2026-07-01' }]);
+    expect(paces).toBeDefined();
+    expect(paces!.milePace).toBeLessThan(paces!.fiveKPace);
+    expect(paces!.fiveKPace).toBeLessThan(paces!.tenKPace);
+    expect(paces!.tenKPace).toBeLessThan(paces!.halfMarathonPace);
+  });
 });
 
 describe('regeneratePlan (base phase, no race)', () => {
@@ -143,6 +163,96 @@ describe('regeneratePlan (with a goal race)', () => {
     const [taperWeek, raceWeek] = peakWeeks.slice(-2);
     expect(taperWeek.targetMileage).toBeLessThan(highestBuildMileage);
     expect(raceWeek.targetMileage).toBeLessThan(taperWeek.targetMileage);
+  });
+});
+
+describe('regeneratePlan (road vs. track race style)', () => {
+  it('uses B.A.A.-style workouts for build/peak when the goal race is a road race, but keeps base universal', () => {
+    const state = defaultAppState('2026-08-01');
+    const race: Race = { id: 'r1', name: 'Fall Half', date: '2026-12-05', distance: 'half-marathon', type: 'road', priority: 'A' };
+    const plan = regeneratePlan(state.profile, [race], state.plan, {}, '2026-08-01');
+
+    const allDays = plan.weeks.flatMap((w) => w.days);
+    const baseHardTitles = allDays.filter((d) => d.phase === 'base' && d.role === 'hard').map((d) => d.title);
+    const buildHardTitles = allDays.filter((d) => d.phase === 'build' && d.role === 'hard').map((d) => d.title);
+    const peakHardTitles = allDays.filter((d) => d.phase === 'peak' && d.role === 'hard').map((d) => d.title);
+
+    // Base stays the general Gaffigan-style aerobic building menu regardless of race type.
+    expect(baseHardTitles.every((t) => t === 'Hard: Hills / Fartlek' || t === 'Hard: Tempo Run')).toBe(true);
+
+    // Build/peak switch to the B.A.A. road-race menus.
+    expect(buildHardTitles.some((t) => t === 'Hard: Progression Run' || t === 'Hard: Goal-Pace Tempo Intervals')).toBe(true);
+    expect(buildHardTitles.every((t) => t !== 'Hard: Track Ladder')).toBe(true);
+    expect(peakHardTitles.some((t) => t === 'Hard: Progression Run' || t === 'Hard: Race-Pace Ladder')).toBe(true);
+    expect(peakHardTitles.every((t) => t !== 'Hard: Speed Endurance')).toBe(true);
+
+    // At least one periodic "simulation" long run appears in the peak phase, and its scheduled
+    // mileage matches the segment actually described in the workout text (e.g. "6 mi easy, 6 mi
+    // at goal pace, 2 mi easy" must total the same number shown on the day card).
+    const simulationRuns = allDays.filter((d) => d.title === 'Long Run: Race Simulation');
+    expect(simulationRuns.length).toBeGreaterThan(0);
+    for (const run of simulationRuns) {
+      const match = run.description.match(/(\d+) mi easy, (\d+) mi at goal pace.*?, (\d+) mi easy/);
+      expect(match).not.toBeNull();
+      const [, before, atGoal, after] = match!.map(Number);
+      expect(run.targetMiles).toBe(before + atGoal + after);
+    }
+
+    // The taper's hard "sharpener" day (4 days before the race, per the deck's guidance) uses
+    // the road-style menu, not the track one. Looked up by date rather than week-block, since
+    // it may land in the final week or the one before it depending on where the race date falls
+    // relative to the fixed weekly cadence.
+    const dayByDate = new Map(allDays.map((d) => [d.date, d]));
+    expect(dayByDate.get('2026-12-01')?.title).toBe('Hard: Race-Week Sharpener');
+  });
+
+  it('keeps the original track-style workouts when the goal race is a track race', () => {
+    const state = defaultAppState('2026-08-01');
+    const race: Race = { id: 'r1', name: 'Conference Meet', date: '2026-12-05', distance: '1600m/mile', type: 'track', priority: 'A' };
+    const plan = regeneratePlan(state.profile, [race], state.plan, {}, '2026-08-01');
+
+    const allDays = plan.weeks.flatMap((w) => w.days);
+    const peakHardTitles = allDays.filter((d) => d.phase === 'peak' && d.role === 'hard').map((d) => d.title);
+    expect(peakHardTitles.some((t) => t === 'Hard: Speed Endurance')).toBe(true);
+    expect(allDays.some((d) => d.title === 'Long Run: Race Simulation')).toBe(false);
+
+    const dayByDate = new Map(allDays.map((d) => [d.date, d]));
+    expect(dayByDate.get('2026-12-01')?.title).toBe('Hard: Race-Week Sharpener (≤2 mi of hard reps)');
+  });
+
+  it('drives goal pace for road workouts from the race\'s goal time when set', () => {
+    const state = defaultAppState('2026-08-01');
+    const race: Race = {
+      id: 'r1',
+      name: 'Fall Half',
+      date: '2026-12-05',
+      distance: 'half-marathon',
+      type: 'road',
+      priority: 'A',
+      goalTimeSeconds: 6300, // 1:45:00 -> goal pace = 6300/13 ≈ 484.6 s/mi = 8:05/mi
+    };
+    const plan = regeneratePlan(state.profile, [race], state.plan, {}, '2026-08-01');
+    const tempoDay = plan.weeks.flatMap((w) => w.days).find((d) => d.phase === 'build' && d.title === 'Hard: Goal-Pace Tempo Intervals');
+    expect(tempoDay?.description).toContain('Goal pace: 8:0');
+  });
+
+  it('builds the full taper window correctly even when the race date falls on the first day of its week-block', () => {
+    // 2026-08-01 is a Saturday, so week-blocks run Sat-Fri; 2026-12-05 is also a Saturday and
+    // lands exactly 18*7 days later, i.e., precisely on a block boundary, so the 6 taper days
+    // before it fall entirely in the *previous* block. Regression test for that alignment bug.
+    const state = defaultAppState('2026-08-01');
+    const race: Race = { id: 'r1', name: 'Fall Half', date: '2026-12-05', distance: 'half-marathon', type: 'road', priority: 'A' };
+    const plan = regeneratePlan(state.profile, [race], state.plan, {}, '2026-08-01');
+
+    const raceDay = plan.weeks.flatMap((w) => w.days).find((d) => d.role === 'race');
+    expect(raceDay?.date).toBe('2026-12-05');
+
+    // All 6 days before the race, across whichever week-blocks they fall in, should carry the
+    // taper's day-by-day roles (easy/medium/hard-taper), not the normal template.
+    const dayByDate = new Map(plan.weeks.flatMap((w) => w.days).map((d) => [d.date, d]));
+    expect(dayByDate.get('2026-12-04')?.role).toBe('easy'); // 1 day before: pre-race jog
+    expect(dayByDate.get('2026-12-01')?.title).toBe('Hard: Race-Week Sharpener'); // 4 days before: sharpener
+    expect(dayByDate.get('2026-11-28')?.role).not.toBe('rest'); // 7 days before: outside the taper window, normal training
   });
 });
 

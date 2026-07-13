@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { computePaces, formatPace, parseTimeToSeconds } from '../domain/paces';
+import { computePaces, formatPace, formatSeconds, parseTimeToSeconds } from '../domain/paces';
 import { todayISO } from '../domain/dates';
 import type { ExperienceLevel, TimeTrial, UserProfile } from '../domain/types';
 
@@ -9,8 +9,15 @@ interface Props {
   onReset: () => void;
 }
 
+const TRIAL_LABEL: Record<TimeTrial['type'], string> = {
+  mile: '1 mile',
+  '5k': '5K',
+  '10k': '10K',
+  'half-marathon': 'Half Marathon',
+};
+
 export default function Settings({ profile, onUpdate, onReset }: Props) {
-  const [trialType, setTrialType] = useState<'mile' | '5k'>('mile');
+  const [trialType, setTrialType] = useState<TimeTrial['type']>('mile');
   const [trialTime, setTrialTime] = useState('');
   const paces = computePaces(profile.timeTrials);
 
@@ -66,22 +73,26 @@ export default function Settings({ profile, onUpdate, onReset }: Props) {
         {paces ? (
           <p>
             5K: <strong>{formatPace(paces.fiveKPace)}</strong> · Mile: <strong>{formatPace(paces.milePace)}</strong> · Tempo:{' '}
-            <strong>{formatPace(paces.tempoPace)}</strong>
+            <strong>{formatPace(paces.tempoPace)}</strong> · 10K: <strong>{formatPace(paces.tenKPace)}</strong> · Half Marathon:{' '}
+            <strong>{formatPace(paces.halfMarathonPace)}</strong>
           </p>
         ) : (
           <p className="muted">Add a time trial below to compute your paces.</p>
         )}
+        <p className="muted">10K and half-marathon paces are predicted from your most recent trial (Riegel formula) unless you enter one directly.</p>
         <form onSubmit={addTrial}>
           <div className="row">
             <label>
               Type
-              <select value={trialType} onChange={(e) => setTrialType(e.target.value as 'mile' | '5k')}>
+              <select value={trialType} onChange={(e) => setTrialType(e.target.value as TimeTrial['type'])}>
                 <option value="mile">1 mile</option>
                 <option value="5k">5K</option>
+                <option value="10k">10K</option>
+                <option value="half-marathon">Half Marathon</option>
               </select>
             </label>
             <label>
-              Time (mm:ss)
+              Time (mm:ss or h:mm:ss)
               <input value={trialTime} onChange={(e) => setTrialTime(e.target.value)} placeholder="6:45" />
             </label>
           </div>
@@ -95,8 +106,7 @@ export default function Settings({ profile, onUpdate, onReset }: Props) {
               .reverse()
               .map((t, i) => (
                 <li key={i}>
-                  {t.date}: {t.type === 'mile' ? '1 mile' : '5K'} in {Math.floor(t.timeSeconds / 60)}:
-                  {String(Math.round(t.timeSeconds % 60)).padStart(2, '0')}
+                  {t.date}: {TRIAL_LABEL[t.type]} in {formatSeconds(t.timeSeconds)}
                 </li>
               ))}
           </ul>
