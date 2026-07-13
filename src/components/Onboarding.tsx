@@ -41,8 +41,9 @@ export default function Onboarding({ onComplete }: Props) {
     <div className="card onboarding">
       <h1>Set up your plan</h1>
       <p className="muted">
-        Based on Ann Gaffigan&apos;s NCA training-cycle framework: a base-building phase (10%/week mileage cap, a down
-        week every 4th week), then speed-endurance build and peak/taper blocks as a race approaches.
+        A base-building phase (10%/week mileage cap, a down week every 4th week) leads into build and peak/taper
+        blocks as a race approaches, using B.A.A. Half Marathon-style workouts: progression runs, goal-pace tempo
+        intervals, race-pace ladders, and periodic long-run &quot;simulations.&quot;
       </p>
       <form onSubmit={handleSubmit}>
         <label>

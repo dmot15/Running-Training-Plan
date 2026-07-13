@@ -166,10 +166,10 @@ describe('regeneratePlan (with a goal race)', () => {
   });
 });
 
-describe('regeneratePlan (road vs. track race style)', () => {
-  it('uses B.A.A.-style workouts for build/peak when the goal race is a road race, but keeps base universal', () => {
+describe('regeneratePlan (B.A.A.-style workouts, always)', () => {
+  it('uses B.A.A. workout menus in every phase, and for any race type (or no race at all)', () => {
     const state = defaultAppState('2026-08-01');
-    const race: Race = { id: 'r1', name: 'Fall Half', date: '2026-12-05', distance: 'half-marathon', type: 'road', priority: 'A' };
+    const race: Race = { id: 'r1', name: 'Conference Meet', date: '2026-12-05', distance: '1600m/mile', type: 'track', priority: 'A' };
     const plan = regeneratePlan(state.profile, [race], state.plan, {}, '2026-08-01');
 
     const allDays = plan.weeks.flatMap((w) => w.days);
@@ -177,14 +177,14 @@ describe('regeneratePlan (road vs. track race style)', () => {
     const buildHardTitles = allDays.filter((d) => d.phase === 'build' && d.role === 'hard').map((d) => d.title);
     const peakHardTitles = allDays.filter((d) => d.phase === 'peak' && d.role === 'hard').map((d) => d.title);
 
-    // Base stays the general Gaffigan-style aerobic building menu regardless of race type.
-    expect(baseHardTitles.every((t) => t === 'Hard: Hills / Fartlek' || t === 'Hard: Tempo Run')).toBe(true);
-
-    // Build/peak switch to the B.A.A. road-race menus.
-    expect(buildHardTitles.some((t) => t === 'Hard: Progression Run' || t === 'Hard: Goal-Pace Tempo Intervals')).toBe(true);
-    expect(buildHardTitles.every((t) => t !== 'Hard: Track Ladder')).toBe(true);
+    // Base and build both use progression runs / goal-pace tempo intervals — there's no
+    // separate "base style" any more, and no track-specific content anywhere, regardless of
+    // this race being a track race.
+    const baaHardTitles = new Set(['Hard: Progression Run', 'Hard: Goal-Pace Tempo Intervals']);
+    expect(baseHardTitles.length).toBeGreaterThan(0);
+    expect(baseHardTitles.every((t) => baaHardTitles.has(t))).toBe(true);
+    expect(buildHardTitles.every((t) => baaHardTitles.has(t))).toBe(true);
     expect(peakHardTitles.some((t) => t === 'Hard: Progression Run' || t === 'Hard: Race-Pace Ladder')).toBe(true);
-    expect(peakHardTitles.every((t) => t !== 'Hard: Speed Endurance')).toBe(true);
 
     // At least one periodic "simulation" long run appears in the peak phase, and its scheduled
     // mileage matches the segment actually described in the workout text (e.g. "6 mi easy, 6 mi
@@ -198,26 +198,25 @@ describe('regeneratePlan (road vs. track race style)', () => {
       expect(run.targetMiles).toBe(before + atGoal + after);
     }
 
-    // The taper's hard "sharpener" day (4 days before the race, per the deck's guidance) uses
-    // the road-style menu, not the track one. Looked up by date rather than week-block, since
-    // it may land in the final week or the one before it depending on where the race date falls
-    // relative to the fixed weekly cadence.
+    // The taper's hard "sharpener" day (4 days before the race). Looked up by date rather than
+    // week-block, since it may land in the final week or the one before it depending on where
+    // the race date falls relative to the fixed weekly cadence.
     const dayByDate = new Map(allDays.map((d) => [d.date, d]));
     expect(dayByDate.get('2026-12-01')?.title).toBe('Hard: Race-Week Sharpener');
   });
 
-  it('keeps the original track-style workouts when the goal race is a track race', () => {
+  it('gives the long run roughly 30% of weekly mileage, not the old ~20% share', () => {
     const state = defaultAppState('2026-08-01');
-    const race: Race = { id: 'r1', name: 'Conference Meet', date: '2026-12-05', distance: '1600m/mile', type: 'track', priority: 'A' };
-    const plan = regeneratePlan(state.profile, [race], state.plan, {}, '2026-08-01');
-
-    const allDays = plan.weeks.flatMap((w) => w.days);
-    const peakHardTitles = allDays.filter((d) => d.phase === 'peak' && d.role === 'hard').map((d) => d.title);
-    expect(peakHardTitles.some((t) => t === 'Hard: Speed Endurance')).toBe(true);
-    expect(allDays.some((d) => d.title === 'Long Run: Race Simulation')).toBe(false);
-
-    const dayByDate = new Map(allDays.map((d) => [d.date, d]));
-    expect(dayByDate.get('2026-12-01')?.title).toBe('Hard: Race-Week Sharpener (≤2 mi of hard reps)');
+    state.profile.startingWeeklyMileage = 30;
+    state.profile.maxWeeklyMileageCap = 50;
+    const plan = regeneratePlan(state.profile, [], state.plan, {}, '2026-08-01');
+    for (const week of plan.weeks) {
+      if (week.isDownWeek) continue;
+      const longDay = week.days.find((d) => d.role === 'long');
+      expect(longDay?.targetMiles).toBeDefined();
+      const share = longDay!.targetMiles! / week.targetMileage;
+      expect(share).toBeGreaterThan(0.25);
+    }
   });
 
   it('drives goal pace for road workouts from the race\'s goal time when set', () => {
