@@ -1,29 +1,40 @@
 :root {
-  --bg: #f6f5f2;
+  /* Boston Marathon-inspired palette: BAA blue + gold/yellow. */
+  --bg: #f5f7fb;
   --card-bg: #ffffff;
-  --text: #23262b;
-  --muted: #6b7280;
-  --border: #e4e1da;
-  --accent: #c1440e;
+  --text: #1b2333;
+  --muted: #626b7d;
+  --border: #dce2ee;
+  --accent: #0039a6;
   --accent-contrast: #ffffff;
-  --easy: #8ea9c1;
-  --hard: #c1440e;
-  --medium: #d9a441;
-  --long: #6a8f5b;
-  --rest: #b8b2a5;
-  --race: #7a4fb5;
+  --gold: #ffd100;
+  --gold-contrast: #1a1500;
+  --easy: #6fa8dc;
+  --hard: #0039a6;
+  --medium: #ffd100;
+  --long: #002d72;
+  --rest: #b9b6ae;
+  --race: #ffb81c;
   --radius: 10px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17181b;
-    --card-bg: #202226;
-    --text: #eceae5;
-    --muted: #9a9a9a;
-    --border: #33353a;
-    --accent: #e0693a;
-    --accent-contrast: #17181b;
+    --bg: #10131c;
+    --card-bg: #1a2032;
+    --text: #eef1f8;
+    --muted: #9aa3b8;
+    --border: #2c3448;
+    --accent: #5b8fef;
+    --accent-contrast: #0a1020;
+    --gold: #ffd100;
+    --gold-contrast: #1a1500;
+    --easy: #7fb4e8;
+    --hard: #5b8fef;
+    --medium: #ffd100;
+    --long: #6f9bff;
+    --rest: #6b7386;
+    --race: #ffc94d;
   }
 }
 
@@ -39,7 +50,7 @@ body {
 }
 
 .app-shell {
-  max-width: 760px;
+  max-width: 920px;
   margin: 0 auto;
   padding: 1rem 1rem 3rem;
 }
@@ -49,11 +60,14 @@ body {
   flex-direction: column;
   gap: 0.75rem;
   margin-bottom: 1rem;
+  border-bottom: 4px solid var(--accent);
+  border-image: linear-gradient(90deg, var(--accent) 0%, var(--accent) 60%, var(--gold) 60%, var(--gold) 100%) 1;
 }
 
 .app-header h1 {
   font-size: 1.4rem;
   margin: 0.5rem 0 0;
+  letter-spacing: -0.01em;
 }
 
 .tabs {
@@ -79,12 +93,13 @@ body {
 }
 
 .today-banner {
-  background: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--gold);
+  color: var(--gold-contrast);
   padding: 0.6rem 0.9rem;
   border-radius: var(--radius);
   margin-bottom: 1rem;
   cursor: pointer;
+  font-weight: 600;
 }
 
 .card {
@@ -181,10 +196,89 @@ button {
   font-size: 1.05rem;
 }
 
-.day-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+/* Week selector: a horizontal strip of chips spread across the top of the page. */
+.week-strip {
+  display: flex;
   gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.25rem 0.1rem 0.85rem;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.week-chip {
+  position: relative;
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  min-width: 96px;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.week-chip-selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.week-chip .wk-num {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.week-chip .wk-phase {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.75;
+}
+
+.week-chip .wk-miles {
+  font-size: 0.75rem;
+  opacity: 0.9;
+}
+
+.week-chip-current-dot {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 2px var(--card-bg);
+}
+
+/* Selected week's days, spread across one row like a calendar. Scrolls on narrow screens,
+   settles into 7 even columns once there's room. */
+.day-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(126px, 1fr);
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.day-row .day-card {
+  scroll-snap-align: start;
+}
+
+@media (min-width: 720px) {
+  .day-row {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(7, 1fr);
+    overflow-x: visible;
+  }
 }
 
 .day-card {
@@ -253,10 +347,10 @@ button {
 
 .role-easy { background: var(--easy); }
 .role-hard { background: var(--hard); }
-.role-medium { background: var(--medium); }
+.role-medium { background: var(--medium); color: var(--gold-contrast); }
 .role-long { background: var(--long); }
-.role-rest { background: var(--rest); color: #333; }
-.role-race { background: var(--race); }
+.role-rest { background: var(--rest); color: #2b2a26; }
+.role-race { background: var(--race); color: var(--gold-contrast); }
 
 .modal-backdrop {
   position: fixed;
@@ -308,11 +402,32 @@ button {
 }
 
 .adaptation-note {
-  background: #fdf1e6;
-  color: #8a4a12;
+  background: color-mix(in srgb, var(--gold) 25%, var(--card-bg));
+  color: var(--gold-contrast);
   padding: 0.5rem;
   border-radius: 6px;
   font-size: 0.85rem;
+}
+
+.role-explainer {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.role-explainer h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+}
+
+.role-explainer p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .feedback-form {

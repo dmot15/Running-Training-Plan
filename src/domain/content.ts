@@ -84,6 +84,19 @@ export function raceContent(race: Race, miles: number): { title: string; descrip
   };
 }
 
+/**
+ * A general-purpose paragraph explaining what a run type is for and how it should feel —
+ * shown alongside (not instead of) the specific prescribed workout for the day.
+ */
+export const ROLE_EXPLANATION: Record<DayRole, string> = {
+  easy: 'Easy recovery runs are the foundation of the week, not filler. Run at a relaxed, conversational pace — you should be able to talk in full sentences the whole way. Their job is to add aerobic volume and blood flow to your legs without adding fatigue, so you show up fresh for the next hard day. Resist the urge to push the pace here; a "fast" easy run borrows energy from the workout that actually needs it.',
+  hard: 'Hard days are where fitness actually gets built: hills, fartlek, track intervals, or tempo work run at a genuinely demanding effort. The plan schedules exactly two of these a week and surrounds them with recovery, because the adaptation happens during rest, not during the workout itself. Warm up and cool down properly, hit the effort or pace called for, and if a rep starts falling apart, it is fine to ease off rather than force it.',
+  medium: 'Medium days are a flexible middle gear — more substantial than an easy jog but not a hard effort. Run this one "as you feel": if your legs are lively, drift toward a moderate, purposeful pace; if you are still carrying fatigue from the last hard day, keep it closer to easy. It is a day to listen to your body rather than hit a number.',
+  long: 'The long run is the week\'s single biggest dose of aerobic development, built up gradually to roughly 20% of your weekly mileage. Keep the effort conversational, especially in the first half — the point is time on your feet and durability, not speed. It is normal for the last mile or two to feel harder; that is exactly the stimulus this run is for.',
+  rest: 'A rest day (or a very easy 15-20 minute jog if you would rather move than sit still) is not wasted time — it is when your body actually absorbs the training you have already done and comes back stronger. Skipping rest days to "make up" mileage tends to backfire by carrying fatigue into the next hard session. If you are feeling beat up, this is also the day to tell the plan so it can back off.',
+  race: 'Race day is the payoff for the whole training cycle. Warm up the way you have practiced, settle into your goal effort early rather than sprinting the first mile, and trust the fitness the base, build, and taper phases were built to produce. However it goes, log how it felt afterward — that feedback shapes whatever comes next.',
+};
+
 export function contentForRole(
   role: DayRole,
   miles: number,

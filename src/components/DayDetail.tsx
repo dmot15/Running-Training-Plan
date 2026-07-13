@@ -1,3 +1,4 @@
+import { ROLE_EXPLANATION } from '../domain/content';
 import type { Feel, FeedbackEntry, Workout } from '../domain/types';
 import FeedbackForm from './FeedbackForm';
 import { ROLE_CLASS, ROLE_LABEL } from './roleMeta';
@@ -25,6 +26,11 @@ export default function DayDetail({ workout, feedback, onClose, onSave }: Props)
         </p>
         <p className="description">{workout.description}</p>
         {workout.adaptationNote && <p className="adaptation-note">Adjusted: {workout.adaptationNote}</p>}
+
+        <div className="role-explainer">
+          <h4>About {ROLE_LABEL[workout.role]} days</h4>
+          <p>{ROLE_EXPLANATION[workout.role]}</p>
+        </div>
 
         {workout.role !== 'rest' && <FeedbackForm existing={feedback} onSave={(entry) => { onSave(entry); onClose(); }} />}
       </div>
